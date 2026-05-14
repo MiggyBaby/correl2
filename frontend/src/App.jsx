@@ -1,36 +1,30 @@
-import { NavLink } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import Home from "./pages/Home";
+import Events from "./pages/Events";
+import Register from "./pages/Register";
+import AdminDashboard from "./pages/AdminDashboard";
+import MyTickets from "./pages/MyTickets";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 
-
-export default function Navbar() {
+export default function App() {
   return (
-    <nav style={styles.nav}>
-      <h2 style={{ margin: 0 }}>EventSys</h2>
-      <div>
-        <NavLink to="/" style={styles.link}>Home</NavLink>
-        <NavLink to="/events" style={styles.link}>Events</NavLink>
-        <NavLink to="/admin" style={styles.link}>Admin</NavLink>
-      </div>
-    </nav>
+    <div style={{ minHeight: "100vh", background: "#f3f4f6" }}>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/events" element={<Events />} />
+        <Route path="/register/:id" element={<Register />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/my-tickets" element={<MyTickets />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="*" element={<Home />} />
+      </Routes>
+    </div>
   );
 }
-
-
-const styles = {
-  nav: {
-    background: "#1f2937",
-    color: "white",
-    padding: "15px 40px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  link: {
-    color: "white",
-    marginLeft: "20px",
-    textDecoration: "none",
-    fontWeight: "600"
-  }
-};
 
 
 

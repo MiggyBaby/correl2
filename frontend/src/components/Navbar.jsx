@@ -1,15 +1,16 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [user, setUser] = useState(null);
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user") || "null");
     setUser(storedUser);
-  }, []);
+  }, [location]);
 
   function logout() {
     localStorage.removeItem("user");
@@ -27,7 +28,10 @@ export default function Navbar() {
 
         {/* SHOW ONLY IF LOGGED IN */}
         {user && (
-          <NavLink to="/admin" style={styles.link}>Admin</NavLink>
+          <>
+            <NavLink to="/my-tickets" style={styles.link}>Tickets</NavLink>
+            <NavLink to="/admin" style={styles.link}>Admin</NavLink>
+          </>
         )}
 
         {/* AUTH BUTTONS */}

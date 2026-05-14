@@ -6,6 +6,8 @@ export default function AdminDashboard() {
 
   const [events, setEvents] = useState([]);
   const [participants, setParticipants] = useState([]);
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const [form, setForm] = useState({
     title: "",
@@ -74,6 +76,13 @@ export default function AdminDashboard() {
     const res = await fetch(`http://localhost:5000/api/participants/${eventId}/${user.id}`);
     const data = await res.json();
     setParticipants(data);
+    setStatusFilter("all");
+  }
+
+  async function loadEmailLogs() {
+    const res = await fetch(`http://localhost:5000/api/email-logs/${user.id}`);
+    const data = await res.json();
+    setEmailLogs(data);
   }
 
   // ======================
@@ -145,7 +154,21 @@ export default function AdminDashboard() {
       {/* PARTICIPANTS */}
       <h2 style={{ marginTop: "30px" }}>Participants</h2>
 
-      {participants.map(p => (
+      {participants.length > 0 && (
+        <div style={{ marginBottom: "15px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            Filter status:
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="waiting">Waiting</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {participants.filter(p => statusFilter === "all" || p.approval_status === statusFilter).map(p => (
         <div key={p.id} style={{ border: "1px solid #ddd", padding: "10px", marginBottom: "10px" }}>
           <p><strong>{p.full_name}</strong></p>
           <p>{p.email}</p>
@@ -165,6 +188,27 @@ export default function AdminDashboard() {
           <button onClick={() => reject(p.id)}>Reject</button>
         </div>
       ))}
+
+      <div style={{ marginTop: "40px" }}>
+        <h2>Email Notifications Log</h2>
+        <button onClick={loadEmailLogs} style={{ marginBottom: "15px" }}>
+          Refresh Email Logs
+        </button>
+
+        {emailLogs.length === 0 ? (
+          <p>No email logs loaded yet.</p>
+        ) : (
+          emailLogs.map(log => (
+            <div key={log.id} style={{ border: "1px solid #ccc", padding: "10px", marginBottom: "10px" }}>
+              <p><strong>{log.subject}</strong></p>
+              <p>Recipient: {log.recipient}</p>
+              <p>Event: {log.event_title || "General"}</p>
+              <p>Status: {log.status}</p>
+              <p>Sent at: {log.created_at}</p>
+            </div>
+          ))
+        )}
+      </div>
 
     </div>
   );

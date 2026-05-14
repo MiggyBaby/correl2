@@ -7,8 +7,10 @@ export default function Register() {
   const [event, setEvent] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const user = JSON.parse(localStorage.getItem("user") || "null");
+
+  const [fullName, setFullName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
   const [paymentMethod, setPaymentMethod] = useState("GCash");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [screenshot, setScreenshot] = useState(null);
@@ -105,6 +107,25 @@ export default function Register() {
     return <div style={{ padding: "40px" }}>Loading...</div>;
   }
 
+  if (!user) {
+    return (
+      <div style={{ padding: "40px", maxWidth: "800px", margin: "0 auto" }}>
+        <h1>Login Required</h1>
+        <p>You must be logged in to register for this event.</p>
+        <p>
+          <a href="/login" style={{ color: "#2563eb" }}>Click here to login.</a>
+        </p>
+        <div style={styles.card}>
+          <h2>{event.title}</h2>
+          <p>{event.description}</p>
+          <p><strong>Location:</strong> {event.location}</p>
+          <p><strong>Date:</strong> {event.date}</p>
+          <p><strong>Price:</strong> {event.price === 0 ? "Free" : `₱${event.price}`}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "40px", maxWidth: "800px", margin: "0 auto" }}>
       <h1>Register for Event</h1>
@@ -126,9 +147,8 @@ export default function Register() {
             <input
               type="text"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              style={styles.input}
+              readOnly
+              style={{ ...styles.input, background: "#f3f4f6", cursor: "not-allowed" }}
             />
           </div>
 
@@ -137,11 +157,14 @@ export default function Register() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={styles.input}
+              readOnly
+              style={{ ...styles.input, background: "#f3f4f6", cursor: "not-allowed" }}
             />
           </div>
+
+          <p style={{ color: "#1f2937", marginBottom: "20px" }}>
+            You are registered using this account. If you need a different account, please log out and sign in with the correct email.
+          </p>
 
           <button type="submit" style={{ ...styles.button, background: "#2563eb" }}>
             Pay & Register
