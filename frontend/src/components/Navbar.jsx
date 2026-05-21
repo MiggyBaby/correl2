@@ -1,20 +1,12 @@
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
-    setUser(storedUser);
-  }, [location]);
+  useLocation();
+  const user = JSON.parse(localStorage.getItem("user") || "null");
 
   function logout() {
     localStorage.removeItem("user");
-    setUser(null);
     navigate("/");
   }
 
@@ -55,15 +47,16 @@ export default function Navbar() {
 
 const styles = {
   nav: {
-    background: "#1f2937",
+    background: "#111827",
     color: "white",
-    padding: "15px 40px",
+    padding: "18px 40px",
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center"
+    alignItems: "center",
+    boxShadow: "0 20px 40px rgba(15, 23, 42, 0.15)"
   },
   link: {
-    color: "white",
+    color: "#f8fafc",
     marginLeft: "20px",
     textDecoration: "none",
     fontWeight: "600"
@@ -74,12 +67,13 @@ const styles = {
   },
   logout: {
     marginLeft: "10px",
-    padding: "6px 12px",
+    padding: "8px 14px",
     border: "none",
-    borderRadius: "5px",
+    borderRadius: "8px",
     background: "#ef4444",
     color: "white",
-    cursor: "pointer"
+    cursor: "pointer",
+    fontWeight: 600
   }
 };
 

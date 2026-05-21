@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 function parseDate(dateStr) {
@@ -7,7 +7,7 @@ function parseDate(dateStr) {
     return parsed;
   }
 
-  const parts = dateStr.split(/[-/\.\s]+/).map(Number);
+  const parts = dateStr.split(/[-/.\s]+/).map(Number);
   if (parts.length >= 3) {
     return new Date(parts[0], parts[1] - 1, parts[2]);
   }
@@ -36,6 +36,11 @@ function buildMonthDays(year, month) {
   return days;
 }
 
+async function fetchEvents() {
+  const res = await fetch("http://localhost:5000/api/events");
+  return res.json();
+}
+
 export default function Events() {
   const [events, setEvents] = useState([]);
   const [viewMode, setViewMode] = useState("calendar");
@@ -46,23 +51,55 @@ export default function Events() {
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  async function loadEvents() {
+  const loadEvents = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/events");
-      const data = await res.json();
+      const data = await fetchEvents();
       setEvents(data);
     } catch (error) {
       console.error("Failed to load events:", error);
     }
-  }
-
-  useEffect(() => {
-    loadEvents();
   }, []);
 
+  useEffect(() => {
+    let ignore = false;
+
+    fetchEvents()
+      .then((data) => {
+        if (!ignore) {
+          setEvents(data);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load events:", error);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handler() {
+      loadEvents();
+    }
+    window.addEventListener('events-updated', handler);
+    return () => window.removeEventListener('events-updated', handler);
+  }, [loadEvents]);
+
+  const filteredEvents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return events;
+    return events.filter((event) => {
+      return [event.title, event.description, event.location, event.owner_name]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(query));
+    });
+  }, [events, searchQuery]);
+
   const eventsByDay = useMemo(() => {
-    return events.reduce((acc, event) => {
+    return filteredEvents.reduce((acc, event) => {
       const date = parseDate(event.date);
       if (!date) return acc;
 
@@ -71,7 +108,7 @@ export default function Events() {
       acc[key].push(event);
       return acc;
     }, {});
-  }, [events]);
+  }, [filteredEvents]);
 
   const stats = useMemo(() => {
     const today = new Date();
@@ -122,28 +159,40 @@ export default function Events() {
   }
 
   return (
-    <div style={{ padding: "40px" }}>
+    <div style={styles.page}>
       <div style={styles.headerRow}>
         <div>
-          <h1>Upcoming Events</h1>
-          <p style={{ color: "#4b5563" }}>
+          <h1 style={styles.pageTitle}>Upcoming Events</h1>
+          <p style={styles.pageSubtitle}>
             Browse events in a calendar view, then expand the event list to register.
           </p>
         </div>
 
-        <div style={styles.viewToggle}>
-          <button
-            style={{ ...styles.toggleButton, ...(viewMode === "calendar" ? styles.activeToggle : {}) }}
-            onClick={() => setViewMode("calendar")}
-          >
-            Calendar
-          </button>
-          <button
-            style={{ ...styles.toggleButton, ...(viewMode === "list" ? styles.activeToggle : {}) }}
-            onClick={() => setViewMode("list")}
-          >
-            List
-          </button>
+        <div style={styles.headerActions}>
+          <div style={styles.searchWrapper}>
+            <input
+              type="text"
+              placeholder="Search events by title, location, or description"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={styles.searchInput}
+            />
+          </div>
+
+          <div style={styles.viewToggle}>
+            <button
+              style={{ ...styles.toggleButton, ...(viewMode === "calendar" ? styles.activeToggle : {}) }}
+              onClick={() => setViewMode("calendar")}
+            >
+              Calendar
+            </button>
+            <button
+              style={{ ...styles.toggleButton, ...(viewMode === "list" ? styles.activeToggle : {}) }}
+              onClick={() => setViewMode("list")}
+            >
+              List
+            </button>
+          </div>
         </div>
       </div>
 
@@ -167,11 +216,10 @@ export default function Events() {
       </div>
 
       {user && (
-        <p style={{ marginTop: "16px", color: "#374151" }}>
+        <p style={styles.userNote}>
           Logged in as <strong>{user.name}</strong> ({user.email})
         </p>
       )}
-
       {viewMode === "calendar" ? (
         <>
           <div style={styles.calendarHeader}>
@@ -238,7 +286,7 @@ export default function Events() {
                     <div key={event.id} style={styles.eventListItem}>
                       <div>
                         <h4 style={{ margin: 0 }}>{event.title}</h4>
-                        <p style={{ margin: "8px 0 0" }}>{event.location} · {event.date}</p>
+                        <p style={{ margin: "8px 0 0" }}>{event.location} - {event.date}</p>
                       </div>
                       <Link to={user ? `/register/${event.id}` : "/login"}>
                         <button style={styles.registerButton}>{user ? "Register" : "Login to Register"}</button>
@@ -252,8 +300,8 @@ export default function Events() {
         </>
       ) : (
         <div style={{ display: "grid", gap: "20px" }}>
-          {events.length === 0 && <p>No events yet.</p>}
-          {events.map((event) => (
+          {filteredEvents.length === 0 && <div style={styles.emptyState}>No matching events found.</div>}
+          {filteredEvents.map((event) => (
             <div key={event.id} style={styles.eventCard}>
               <h2>{event.title}</h2>
               <p style={styles.ownerLine}>
@@ -262,7 +310,7 @@ export default function Events() {
               <p>{event.description}</p>
               <p><strong>Location:</strong> {event.location}</p>
               <p><strong>Date:</strong> {event.date}</p>
-              <p><strong>Price:</strong> {event.price === 0 ? "Free" : `₱${event.price}`}</p>
+              <p><strong>Price:</strong> {event.price === 0 ? "Free" : `PHP ${event.price}`}</p>
               <Link to={user ? `/register/${event.id}` : "/login"}>
                 <button style={styles.registerButton}>{user ? "Register" : "Login to Register"}</button>
               </Link>
@@ -369,6 +417,57 @@ const styles = {
     borderRadius: "14px",
     padding: "24px",
     boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)"
+  },
+  page: {
+    padding: "40px",
+    maxWidth: "1220px",
+    margin: "0 auto"
+  },
+  pageTitle: {
+    margin: 0,
+    fontSize: "2.4rem",
+    letterSpacing: "-0.03em"
+  },
+  pageSubtitle: {
+    margin: "10px 0 0",
+    color: "#475569",
+    maxWidth: "680px",
+    lineHeight: 1.7
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    flexWrap: "wrap",
+    justifyContent: "flex-end"
+  },
+  searchWrapper: {
+    minWidth: "320px",
+    flex: "1 1 320px"
+  },
+  searchInput: {
+    width: "100%",
+    padding: "14px 16px",
+    borderRadius: "14px",
+    border: "1px solid #cbd5e1",
+    outline: "none",
+    boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.06)"
+  },
+  userNote: {
+    marginTop: "16px",
+    color: "#374151",
+    background: "#f8fafc",
+    padding: "14px 18px",
+    borderRadius: "14px",
+    border: "1px solid #e2e8f0"
+  },
+  emptyState: {
+    padding: "26px",
+    borderRadius: "16px",
+    background: "#f8fafc",
+    color: "#475569",
+    textAlign: "center",
+    boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.2)"
   },
   badgeRow: {
     display: "flex",

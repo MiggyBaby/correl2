@@ -24,7 +24,7 @@ export default function MyTickets() {
         }
 
         setTickets(data);
-      } catch (error) {
+      } catch {
         setMessage("Failed to connect to the server.");
       }
     }

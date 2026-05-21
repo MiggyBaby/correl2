@@ -1,4 +1,19 @@
+import os
+import subprocess
+import sys
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VENV_PYTHON = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
+
+if (
+    os.name == "nt"
+    and os.path.exists(VENV_PYTHON)
+    and os.path.abspath(sys.executable).lower() != os.path.abspath(VENV_PYTHON).lower()
+):
+    raise SystemExit(subprocess.call([VENV_PYTHON, *sys.argv]))
+
 from flask import Flask, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -9,11 +24,12 @@ import string
 import qrcode
 import base64
 from io import BytesIO
-import os
+from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
 
 app = Flask(__name__)
+load_dotenv()
 CORS(app)
 
 # ======================
@@ -25,8 +41,11 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 PAYMENT_NUMBER = "09222333123"
 
-EMAIL_ADDRESS = "your_email@gmail.com"
-EMAIL_PASSWORD = "your_app_password"
+EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "your_email@gmail.com")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "your_app_password")
+EMAIL_SMTP_SERVER = os.environ.get("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+EMAIL_SMTP_PORT = int(os.environ.get("EMAIL_SMTP_PORT", "465"))
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "true").lower() in ("1", "true", "yes")
 
 engine = create_engine("sqlite:///event.db", echo=False)
 SessionLocal = sessionmaker(bind=engine)
@@ -54,6 +73,8 @@ class Event(Base):
     price = Column(Integer)
     owner_id = Column(Integer)
     visibility = Column(String(50))
+    payment_phone = Column(String(200))
+    payment_qr_filename = Column(String(255))
 
 
 class Registration(Base):
@@ -114,7 +135,7 @@ def send_email(to_email, subject, body, event_id=None):
     db = SessionLocal()
 
     try:
-        if EMAIL_ADDRESS == "your_email@gmail.com":
+        if EMAIL_ADDRESS == "your_email@gmail.com" or EMAIL_PASSWORD == "your_app_password":
             print("Email skipped (configure credentials)")
             status = "skipped"
         else:
@@ -123,9 +144,16 @@ def send_email(to_email, subject, body, event_id=None):
             msg["From"] = EMAIL_ADDRESS
             msg["To"] = to_email
 
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
+            if EMAIL_USE_SSL:
+                with smtplib.SMTP_SSL(EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT) as server:
+                    server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                    server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
+            else:
+                with smtplib.SMTP(EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                    server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
 
     except Exception as e:
         status = f"failed: {e}"
@@ -143,6 +171,8 @@ def send_email(to_email, subject, body, event_id=None):
         db.add(email_log)
         db.commit()
         db.close()
+
+    return status
 
 # ======================
 # AUTH
@@ -238,6 +268,9 @@ def public_events():
                 "price": e.price,
                 "owner_id": e.owner_id,
                 "owner_name": owner.name if owner else "Unknown"
+                ,
+                "payment_phone": e.payment_phone,
+                "payment_qr_filename": e.payment_qr_filename
             })
 
         return jsonify(result)
@@ -265,6 +298,9 @@ def event_details(event_id):
             "price": event.price,
             "owner_id": event.owner_id,
             "owner_name": owner.name if owner else "Unknown"
+            ,
+            "payment_phone": event.payment_phone,
+            "payment_qr_filename": event.payment_qr_filename
         })
     finally:
         db.close()
@@ -288,6 +324,9 @@ def my_events(user_id):
             "date": e.date,
             "price": e.price,
             "visibility": e.visibility
+            ,
+            "payment_phone": e.payment_phone,
+            "payment_qr_filename": e.payment_qr_filename
         } for e in events])
     finally:
         db.close()
@@ -316,7 +355,9 @@ def create_event():
             date=data.get("date", ""),
             price=data.get("price", 0),
             owner_id=data["owner_id"],
-            visibility=data.get("visibility", "public")
+            visibility=data.get("visibility", "public"),
+            payment_phone=data.get("payment_phone"),
+            payment_qr_filename=data.get("payment_qr_filename")
         )
         
         db.add(event)
@@ -329,6 +370,93 @@ def create_event():
         return jsonify({"message": f"Event creation failed: {str(e)}"}), 500
     finally:
         db.close()
+
+
+@app.delete("/api/events/<int:event_id>")
+def delete_event(event_id):
+    db = SessionLocal()
+    try:
+        data = request.get_json()
+        owner_id = data.get("owner_id")
+        if not owner_id:
+            return jsonify({"message": "owner_id required"}), 400
+        
+        event = db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
+        if not event:
+            return jsonify({"message": "Event not found or not owned by you"}), 404
+        
+        # Delete related registrations and email logs
+        db.query(Registration).filter(Registration.event_id == event_id).delete()
+        db.query(EmailLog).filter(EmailLog.event_id == event_id).delete()
+        
+        db.delete(event)
+        db.commit()
+        
+        return jsonify({"message": "Event deleted"}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"message": f"Delete failed: {str(e)}"}), 500
+    finally:
+        db.close()
+
+
+@app.put("/api/events/<int:event_id>")
+def update_event(event_id):
+    db = SessionLocal()
+    try:
+        data = request.get_json() or {}
+        owner_id = data.get("owner_id")
+        if not owner_id:
+            return jsonify({"message": "owner_id required"}), 400
+
+        event = db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
+        if not event:
+            return jsonify({"message": "Event not found or not owned by you"}), 404
+
+        # Update allowed fields
+        event.title = data.get("title", event.title)
+        event.description = data.get("description", event.description)
+        event.location = data.get("location", event.location)
+        event.date = data.get("date", event.date)
+        event.price = data.get("price", event.price)
+        event.visibility = data.get("visibility", event.visibility)
+        event.payment_phone = data.get("payment_phone", event.payment_phone)
+        event.payment_qr_filename = data.get("payment_qr_filename", event.payment_qr_filename)
+
+        db.commit()
+        db.refresh(event)
+
+        return jsonify({
+            "message": "updated",
+            "event": {
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "location": event.location,
+                "date": event.date,
+                "price": event.price,
+                "owner_id": event.owner_id,
+                "visibility": event.visibility
+            }
+        }), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"message": f"Update failed: {str(e)}"}), 500
+    finally:
+        db.close()
+
+
+@app.post('/api/upload')
+def upload_file():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"message": "No file provided"}), 400
+
+    filename = secure_filename(file.filename)
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+
+    return jsonify({"filename": filename, "url": f"/uploads/{filename}"}), 201
 
 # ======================
 # PAYMENT INFO
@@ -427,6 +555,10 @@ def register():
 def participants(event_id, user_id):
     db = SessionLocal()
     try:
+        event = db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            return jsonify({"message": "Event not found"}), 404
+
         regs = db.query(Registration).filter(Registration.event_id == event_id).all()
         return jsonify([{
             "id": r.id,
@@ -435,7 +567,17 @@ def participants(event_id, user_id):
             "payment_method": r.payment_method,
             "payment_status": r.payment_status,
             "approval_status": r.approval_status,
-            "attended": r.attended
+            "reference_number": r.reference_number,
+            "payment_date": r.payment_date,
+            "screenshot_filename": r.screenshot_filename,
+            "receipt_number": r.receipt_number,
+            "ticket_code": r.ticket_code,
+            "ticket_qr_data": r.ticket_qr_data,
+            "attended": r.attended,
+            "event_id": event.id,
+            "event_title": event.title,
+            "event_date": event.date,
+            "event_location": event.location
         } for r in regs])
     finally:
         db.close()
@@ -511,22 +653,33 @@ def approve(id, user_id):
         reg = db.query(Registration).filter(Registration.id == id).first()
         if not reg:
             return jsonify({"message": "Registration not found"}), 404
-        
+
+        event = db.query(Event).filter(Event.id == reg.event_id).first()
+        if not event:
+            return jsonify({"message": "Event not found"}), 404
+        if event.owner_id != user_id:
+            return jsonify({"message": "You are not allowed to approve this registration"}), 403
+
         reg.approval_status = "approved"
         reg.payment_status = "paid"
         reg.receipt_number = generate_code("RCPT")
         reg.ticket_code = generate_code("TICKET")
         reg.ticket_qr_data = generate_qr(reg.ticket_code)
-        
+
         db.commit()
-        
-        send_email(
+
+        email_status = send_email(
             reg.email,
             "Registration Approved",
-            f"Your registration for event ID {reg.event_id} has been approved. Your ticket code is {reg.ticket_code}."
+            f"Your registration for '{event.title}' has been approved.\n\nTicket code: {reg.ticket_code}\nReceipt number: {reg.receipt_number}\n\nPlease bring this ticket code to the event.",
+            event_id=event.id
         )
-        
-        return jsonify({"message": "Approved"}), 200
+
+        return jsonify({
+            "message": "Approved",
+            "email_status": email_status,
+            "recipient": reg.email
+        }), 200
     except Exception as e:
         db.rollback()
         return jsonify({"message": f"Approval failed: {str(e)}"}), 500
@@ -541,17 +694,28 @@ def reject(id, user_id):
         reg = db.query(Registration).filter(Registration.id == id).first()
         if not reg:
             return jsonify({"message": "Registration not found"}), 404
-        
+
+        event = db.query(Event).filter(Event.id == reg.event_id).first()
+        if not event:
+            return jsonify({"message": "Event not found"}), 404
+        if event.owner_id != user_id:
+            return jsonify({"message": "You are not allowed to reject this registration"}), 403
+
         reg.approval_status = "rejected"
         db.commit()
-        
-        send_email(
+
+        email_status = send_email(
             reg.email,
             "Registration Rejected",
-            f"Your registration for event ID {reg.event_id} has been rejected."
+            f"We are sorry to inform you that your registration for '{event.title}' has been rejected.\n\nIf you have questions, please contact the event organizer.",
+            event_id=event.id
         )
-        
-        return jsonify({"message": "Rejected"}), 200
+
+        return jsonify({
+            "message": "Rejected",
+            "email_status": email_status,
+            "recipient": reg.email
+        }), 200
     except Exception as e:
         db.rollback()
         return jsonify({"message": f"Rejection failed: {str(e)}"}), 500

@@ -19,21 +19,27 @@ export default function Register() {
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [qrExpanded, setQrExpanded] = useState(false);
 
   useEffect(() => {
     async function loadPageData() {
       try {
-        const [eventRes, paymentRes] = await Promise.all([
-          fetch(`http://localhost:5000/api/events/${id}`),
-          fetch("http://localhost:5000/api/payment-info")
-        ]);
-
+        const eventRes = await fetch(`http://localhost:5000/api/events/${id}`);
         const eventData = await eventRes.json();
-        const paymentData = await paymentRes.json();
-
         setEvent(eventData);
-        setPaymentInfo(paymentData);
-      } catch (error) {
+
+        // Prefer event-specific payment info
+        if (eventData.payment_phone || eventData.payment_qr_filename) {
+          setPaymentInfo({
+            payment_number: eventData.payment_phone,
+            payment_qr_filename: eventData.payment_qr_filename
+          });
+        } else {
+          const paymentRes = await fetch("http://localhost:5000/api/payment-info");
+          const paymentData = await paymentRes.json();
+          setPaymentInfo(paymentData);
+        }
+      } catch {
         setMessage("Failed to load event or payment information.");
       }
     }
@@ -95,7 +101,7 @@ export default function Register() {
         setMessage(data.message || "Registration failed.");
         setSuccess(false);
       }
-    } catch (error) {
+    } catch {
       setMessage("Could not connect to server.");
       setSuccess(false);
     } finally {
@@ -104,65 +110,65 @@ export default function Register() {
   }
 
   if (!event || !paymentInfo) {
-    return <div style={{ padding: "40px" }}>Loading...</div>;
+    return <div style={styles.page}>Loading...</div>;
   }
 
   if (!user) {
     return (
-      <div style={{ padding: "40px", maxWidth: "800px", margin: "0 auto" }}>
-        <h1>Login Required</h1>
-        <p>You must be logged in to register for this event.</p>
+      <div style={styles.page}>
+        <h1 style={styles.pageTitle}>Login Required</h1>
+        <p style={styles.subtitle}>You must be logged in to register for this event.</p>
         <p>
-          <a href="/login" style={{ color: "#2563eb" }}>Click here to login.</a>
+          <a href="/login" style={styles.link}>Click here to login.</a>
         </p>
         <div style={styles.card}>
           <h2>{event.title}</h2>
           <p>{event.description}</p>
           <p><strong>Location:</strong> {event.location}</p>
           <p><strong>Date:</strong> {event.date}</p>
-          <p><strong>Price:</strong> {event.price === 0 ? "Free" : `₱${event.price}`}</p>
+          <p><strong>Price:</strong> {event.price === 0 ? "Free" : `PHP ${event.price}`}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "40px", maxWidth: "800px", margin: "0 auto" }}>
-      <h1>Register for Event</h1>
+    <div style={styles.page}>
+      <h1 style={styles.pageTitle}>Register for Event</h1>
 
       <div style={styles.card}>
         <h2>{event.title}</h2>
         <p>{event.description}</p>
         <p><strong>Location:</strong> {event.location}</p>
         <p><strong>Date:</strong> {event.date}</p>
-        <p><strong>Price:</strong> {event.price === 0 ? "Free" : `₱${event.price}`}</p>
+        <p><strong>Price:</strong> {event.price === 0 ? "Free" : `PHP ${event.price}`}</p>
       </div>
 
       {!showPaymentStep ? (
         <form onSubmit={handleProceedToPayment} style={styles.card}>
-          <h2>Participant Information</h2>
+          <h2 style={styles.sectionTitle}>Participant Information</h2>
 
-          <div style={{ marginBottom: "15px" }}>
-            <label>Full Name</label>
+          <div style={styles.field}>
+            <label style={styles.label}>Full Name</label>
             <input
               type="text"
               value={fullName}
               readOnly
-              style={{ ...styles.input, background: "#f3f4f6", cursor: "not-allowed" }}
+              style={{ ...styles.input, ...styles.disabledInput }}
             />
           </div>
 
-          <div style={{ marginBottom: "15px" }}>
-            <label>Email</label>
+          <div style={styles.field}>
+            <label style={styles.label}>Email</label>
             <input
               type="email"
               value={email}
               readOnly
-              style={{ ...styles.input, background: "#f3f4f6", cursor: "not-allowed" }}
+              style={{ ...styles.input, ...styles.disabledInput }}
             />
           </div>
 
-          <p style={{ color: "#1f2937", marginBottom: "20px" }}>
+          <p style={styles.helpText}>
             You are registered using this account. If you need a different account, please log out and sign in with the correct email.
           </p>
 
@@ -171,7 +177,7 @@ export default function Register() {
           </button>
 
           {message && (
-            <p style={{ marginTop: "15px", fontWeight: "bold", color: "red" }}>
+            <p style={{ ...styles.message, color: "red" }}>
               {message}
             </p>
           )}
@@ -179,18 +185,36 @@ export default function Register() {
       ) : (
         <form onSubmit={handleSubmitPayment} style={styles.card}>
           <h2>Payment Method</h2>
-          <p><strong>Send payment to:</strong> {paymentInfo.payment_number}</p>
+          <p><strong>Send payment to:</strong> {paymentInfo.payment_number || paymentInfo.number}</p>
 
-          <div style={{ marginTop: "15px", marginBottom: "20px" }}>
+              <div style={styles.qrWrapper}>
             <img
-              src={`data:image/png;base64,${paymentInfo.payment_qr_data}`}
+              src={paymentInfo.payment_qr_filename ? `http://localhost:5000/uploads/${paymentInfo.payment_qr_filename}` : `data:image/png;base64,${paymentInfo.payment_qr_data}`}
               alt="Payment QR"
-              style={{ width: "220px", height: "220px", border: "1px solid #ccc", padding: "10px" }}
+              style={styles.qrImage}
+              onClick={() => setQrExpanded(true)}
             />
+            <p style={styles.helpText}>
+              Tap the QR image to enlarge for easier scanning.
+            </p>
           </div>
+          {qrExpanded && (
+            <div style={styles.qrOverlay} onClick={() => setQrExpanded(false)}>
+              <div style={styles.qrModal} onClick={(e) => e.stopPropagation()}>
+                <img
+                  src={paymentInfo.payment_qr_filename ? `http://localhost:5000/uploads/${paymentInfo.payment_qr_filename}` : `data:image/png;base64,${paymentInfo.payment_qr_data}`}
+                  alt="Payment QR"
+                  style={styles.qrLargeImage}
+                />
+                <button style={styles.closeButton} onClick={() => setQrExpanded(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
 
-          <div style={{ marginBottom: "15px" }}>
-            <label>Choose Payment Method</label>
+          <div style={styles.field}>
+            <label style={styles.label}>Choose Payment Method</label>
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
@@ -205,8 +229,8 @@ export default function Register() {
 
           {paymentMethod !== "Cash" && (
             <>
-              <div style={{ marginBottom: "15px" }}>
-                <label>Reference Code</label>
+              <div style={styles.field}>
+                <label style={styles.label}>Reference Code</label>
                 <input
                   type="text"
                   value={referenceNumber}
@@ -216,14 +240,14 @@ export default function Register() {
                 />
               </div>
 
-              <div style={{ marginBottom: "20px" }}>
-                <label>Upload Screenshot Proof of Payment</label>
+              <div style={styles.field}>
+                <label style={styles.label}>Upload Screenshot Proof of Payment</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(e) => setScreenshot(e.target.files[0])}
                   required
-                  style={{ marginTop: "8px" }}
+                  style={styles.fileInput}
                 />
               </div>
             </>
@@ -247,7 +271,7 @@ export default function Register() {
           </button>
 
           {message && (
-            <p style={{ marginTop: "15px", fontWeight: "bold", color: success ? "green" : "red" }}>
+            <p style={{ ...styles.message, color: success ? "#047857" : "#b91c1c" }}>
               {message}
             </p>
           )}
@@ -258,25 +282,131 @@ export default function Register() {
 }
 
 const styles = {
+  page: {
+    padding: "40px",
+    maxWidth: "860px",
+    margin: "0 auto"
+  },
+  pageTitle: {
+    margin: 0,
+    fontSize: "2.2rem",
+    marginBottom: "12px"
+  },
+  subtitle: {
+    color: "#475569",
+    marginBottom: "24px"
+  },
   card: {
     background: "white",
-    padding: "20px",
-    borderRadius: "10px",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
+    padding: "26px",
+    borderRadius: "18px",
+    boxShadow: "0 18px 50px rgba(15,23,42,0.08)",
     marginBottom: "30px"
+  },
+  sectionTitle: {
+    margin: "0 0 22px",
+    fontSize: "1.35rem"
+  },
+  field: {
+    marginBottom: "20px"
+  },
+  label: {
+    display: "block",
+    marginBottom: "10px",
+    fontWeight: 600,
+    color: "#334155"
   },
   input: {
     width: "100%",
-    padding: "10px",
-    marginTop: "5px",
-    borderRadius: "6px",
-    border: "1px solid #ccc"
+    padding: "14px 16px",
+    borderRadius: "12px",
+    border: "1px solid #cbd5e1",
+    outline: "none",
+    background: "#f8fafc",
+    color: "#111827"
+  },
+  disabledInput: {
+    background: "#f3f4f6",
+    cursor: "not-allowed"
+  },
+  fileInput: {
+    width: "100%",
+    marginTop: "8px"
   },
   button: {
-    padding: "10px 20px",
+    padding: "12px 24px",
     color: "white",
     border: "none",
-    borderRadius: "6px",
+    borderRadius: "12px",
+    cursor: "pointer",
+    fontWeight: 700
+  },
+  qrWrapper: {
+    marginTop: "15px",
+    marginBottom: "20px",
+    textAlign: "center"
+  },
+  qrImage: {
+    width: "100%",
+    maxWidth: "320px",
+    height: "auto",
+    objectFit: "contain",
+    border: "1px solid #e2e8f0",
+    padding: "12px",
+    cursor: "pointer",
+    borderRadius: "18px",
+    boxShadow: "0 10px 30px rgba(15,23,42,0.08)"
+  },
+  helpText: {
+    marginTop: "10px",
+    color: "#475569",
+    fontSize: "0.95rem"
+  },
+  message: {
+    marginTop: "18px",
+    fontWeight: 700
+  },
+  link: {
+    color: "#2563eb",
+    textDecoration: "none",
+    fontWeight: 600
+  },
+  qrOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: "20px"
+  },
+  qrModal: {
+    background: "white",
+    padding: "20px",
+    borderRadius: "16px",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+    maxWidth: "100%",
+    maxHeight: "100%",
+    textAlign: "center"
+  },
+  qrLargeImage: {
+    width: "min(90vw, 520px)",
+    height: "min(90vw, 520px)",
+    objectFit: "contain",
+    borderRadius: "14px",
+    border: "1px solid #d1d5db"
+  },
+  closeButton: {
+    marginTop: "16px",
+    padding: "10px 18px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#2563eb",
+    color: "white",
     cursor: "pointer"
   }
 };
