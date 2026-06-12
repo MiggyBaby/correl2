@@ -1,36 +1,50 @@
 import { useEffect, useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { jsPDF } from "jspdf";
 
 export default function MyTickets() {
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
   const [message, setMessage] = useState("");
-
-  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const [user, setUser] = useState(() => JSON.parse(sessionStorage.getItem("user") || "null"));
 
   useEffect(() => {
-    async function fetchTickets() {
-      if (!user) {
-        setMessage("Please login to view your tickets.");
-        return;
-      }
-
+    async function fetchTickets(currentUser) {
       try {
-        const res = await fetch(`http://localhost:5000/api/my-registrations?email=${encodeURIComponent(user.email)}`);
+        const res = await fetch(`http://localhost:5000/api/my-registrations?email=${encodeURIComponent(currentUser.email)}`);
         const data = await res.json();
 
         if (!res.ok) {
           setMessage(data.message || "Unable to load your tickets.");
+          setTickets([]);
           return;
         }
 
         setTickets(data);
       } catch {
         setMessage("Failed to connect to the server.");
+        setTickets([]);
       }
     }
 
-    fetchTickets();
-  }, [user]);
+    if (!user) {
+      setMessage("Please login to view your tickets.");
+      navigate("/login");
+      return;
+    }
+
+    setMessage("");
+    fetchTickets(user);
+
+    const onStorage = (event) => {
+      if (event.key === "user") {
+        setUser(JSON.parse(event.newValue || "null"));
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [user, navigate]);
 
   if (!user) {
     return (
@@ -58,10 +72,18 @@ export default function MyTickets() {
   }
 
   return (
-    <div style={{ padding: "40px", maxWidth: "900px", margin: "0 auto" }}>
-      <h1>My Tickets</h1>
+    <div style={styles.page}>
+      <div style={styles.headerRow}>
+        <div>
+          <h1 style={styles.pageTitle}>My Tickets</h1>
+          <p style={styles.subtitle}>Review your bookings and access your notifications in one place.</p>
+        </div>
+        <Link to="/notifications" style={styles.linkButton}>
+          View Notifications
+        </Link>
+      </div>
 
-      {message && <p style={{ color: "red" }}>{message}</p>}
+      {message && <p style={{ color: "#b91c1c" }}>{message}</p>}
 
       {tickets.length === 0 && !message && (
         <p>No registrations found for {user.email}.</p>
@@ -99,20 +121,87 @@ export default function MyTickets() {
 }
 
 const styles = {
+  notificationsSection: {
+    marginBottom: "22px",
+    padding: "20px",
+    background: "#f8fafc",
+    borderRadius: "14px",
+    border: "1px solid #e2e8f0"
+  },
+  sectionHeader: {
+    margin: 0,
+    fontSize: "20px",
+    marginBottom: "12px",
+    color: "#111827"
+  },
+  noNotifications: {
+    margin: 0,
+    color: "#6b7280"
+  },
+  notificationCard: {
+    padding: "14px",
+    borderRadius: "12px",
+    background: "white",
+    border: "1px solid #d1d5db",
+    marginBottom: "12px"
+  },
+  notificationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "12px",
+    marginBottom: "8px"
+  },
+  notificationTime: {
+    fontSize: "13px",
+    color: "#6b7280"
+  },
+  notificationMessage: {
+    margin: 0,
+    color: "#374151"
+  },
+  page: {
+    padding: "40px",
+    maxWidth: "980px",
+    margin: "0 auto"
+  },
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "16px",
+    marginBottom: "24px"
+  },
+  pageTitle: {
+    margin: 0,
+    fontSize: "2.6rem"
+  },
+  subtitle: {
+    color: "#475569"
+  },
   card: {
     background: "white",
     padding: "20px",
-    borderRadius: "12px",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.08)",
+    borderRadius: "18px",
+    boxShadow: "0 18px 50px rgba(15,23,42,0.08)",
     marginBottom: "20px"
   },
   pdfButton: {
     marginTop: "15px",
     padding: "10px 18px",
-    background: "#10b981",
+    background: "#dc2626",
     color: "white",
     border: "none",
-    borderRadius: "6px",
+    borderRadius: "10px",
+    cursor: "pointer"
+  },
+  linkButton: {
+    display: "inline-block",
+    padding: "12px 20px",
+    background: "#dc2626",
+    color: "white",
+    borderRadius: "14px",
+    textDecoration: "none",
+    fontWeight: 600,
     cursor: "pointer"
   }
 };

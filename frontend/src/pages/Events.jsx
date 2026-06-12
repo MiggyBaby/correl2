@@ -48,7 +48,7 @@ export default function Events() {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
-  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const user = JSON.parse(sessionStorage.getItem("user") || "null");
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -343,9 +343,9 @@ const styles = {
     color: "#1f2937"
   },
   activeToggle: {
-    background: "#2563eb",
+    background: "#dc2626",
     color: "white",
-    borderColor: "#2563eb"
+    borderColor: "#dc2626"
   },
   calendarHeader: {
     display: "flex",
@@ -370,8 +370,8 @@ const styles = {
     minHeight: "40px",
     border: "1px solid #e5e7eb",
     borderRadius: "12px",
-    background: "#f8fafc",
-    color: "#6b7280",
+    background: "#fff1f2",
+    color: "#991b1b",
     fontWeight: "700",
     display: "flex",
     alignItems: "center",
@@ -398,8 +398,8 @@ const styles = {
   },
   eventBadge: {
     padding: "6px 8px",
-    background: "#eff6ff",
-    color: "#1d4ed8",
+    background: "#fee2e2",
+    color: "#991b1b",
     borderRadius: "8px",
     fontSize: "0.9rem"
   },
@@ -488,8 +488,8 @@ const styles = {
     transition: "transform 0.15s ease, border-color 0.15s ease",
   },
   dayCellSelected: {
-    borderColor: "#2563eb",
-    background: "#eff6ff"
+    borderColor: "#dc2626",
+    background: "#fee2e2"
   },
   modalOverlay: {
     position: "fixed",
@@ -588,7 +588,7 @@ const styles = {
   registerButton: {
     marginTop: "16px",
     padding: "10px 22px",
-    background: "#2563eb",
+    background: "#dc2626",
     color: "white",
     border: "none",
     borderRadius: "10px",

@@ -4,7 +4,7 @@ import "react-datepicker/dist/react-datepicker.css";
 
 export default function AdminDashboard() {
 
-  const user = useMemo(() => JSON.parse(localStorage.getItem("user") || "null"), []);
+  const user = useMemo(() => JSON.parse(sessionStorage.getItem("user") || "null"), []);
 
   const [events, setEvents] = useState([]);
   const [participants, setParticipants] = useState([]);
@@ -30,6 +30,8 @@ export default function AdminDashboard() {
   const [editingEventId, setEditingEventId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [proofPreview, setProofPreview] = useState(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [eventMetrics, setEventMetrics] = useState(null);
 
   const qrStyles = {
     overlay: {
@@ -66,9 +68,169 @@ export default function AdminDashboard() {
       padding: "10px 18px",
       border: "none",
       borderRadius: "8px",
-      background: "#2563eb",
+      background: "#dc2626",
       color: "white",
       cursor: "pointer"
+    }
+  };
+
+  const styles = {
+    page: {
+      padding: "30px",
+      maxWidth: 1200,
+      margin: "0 auto",
+      fontFamily: "Inter, system-ui, sans-serif",
+      color: "#111827"
+    },
+    pageTitle: {
+      fontSize: 32,
+      marginBottom: 18,
+      letterSpacing: "-0.03em"
+    },
+    sectionTitle: {
+      marginTop: 30,
+      marginBottom: 12,
+      fontSize: 22,
+      color: "#111827"
+    },
+    card: {
+      borderRadius: 18,
+      background: "#ffffff",
+      border: "1px solid #e5e7eb",
+      padding: 24,
+      boxShadow: "0 18px 40px rgba(15, 23, 42, 0.05)",
+      marginBottom: 24
+    },
+    profileCard: {
+      borderRadius: 18,
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      padding: 20,
+      marginBottom: 24
+    },
+    eventCard: {
+      borderRadius: 18,
+      background: "#ffffff",
+      border: "1px solid #e5e7eb",
+      padding: 20,
+      marginBottom: 16,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 16
+    },
+    participantCard: {
+      borderRadius: 18,
+      background: "#ffffff",
+      border: "1px solid #e5e7eb",
+      padding: 20,
+      marginBottom: 16
+    },
+    participantHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 12
+    },
+    participantDetails: {
+      marginTop: 14,
+      padding: 18,
+      background: "#f8fafc",
+      borderRadius: 14,
+      border: "1px solid #e2e8f0"
+    },
+    input: {
+      width: "100%",
+      padding: "12px 14px",
+      borderRadius: 12,
+      border: "1px solid #d1d5db",
+      background: "#fff",
+      fontSize: 15,
+      color: "#111827"
+    },
+    label: {
+      display: "block",
+      marginBottom: 6,
+      fontWeight: 600,
+      color: "#374151"
+    },
+    field: {
+      marginBottom: 18
+    },
+    row: {
+      display: "flex",
+      gap: 12,
+      flexWrap: "wrap",
+      alignItems: "flex-end",
+      marginBottom: 18
+    },
+    primaryButton: {
+      padding: "10px 18px",
+      borderRadius: 12,
+      border: "none",
+      background: "#dc2626",
+      color: "white",
+      cursor: "pointer",
+      fontWeight: 600,
+      transition: "background 0.2s ease"
+    },
+    secondaryButton: {
+      padding: "10px 18px",
+      borderRadius: 12,
+      border: "1px solid #d1d5db",
+      background: "#ffffff",
+      color: "#111827",
+      cursor: "pointer",
+      fontWeight: 600
+    },
+    dangerButton: {
+      padding: "10px 18px",
+      borderRadius: 12,
+      border: "1px solid #f87171",
+      background: "#fee2e2",
+      color: "#b91c1c",
+      cursor: "pointer",
+      fontWeight: 600
+    },
+    ghostButton: {
+      padding: "8px 14px",
+      borderRadius: 10,
+      border: "1px solid #cbd5e1",
+      background: "#f8fafc",
+      color: "#374151",
+      cursor: "pointer"
+    },
+    muted: {
+      color: "#6b7280"
+    },
+    mutedSmall: {
+      color: "#6b7280",
+      fontSize: 13,
+      marginTop: 6
+    },
+    info: {
+      color: "#dc2626",
+      marginBottom: 12
+    },
+    error: {
+      color: "#b91c1c",
+      marginBottom: 12
+    },
+    actionMessage: {
+      borderRadius: 14,
+      background: "#eef2ff",
+      padding: "14px 18px",
+      marginBottom: 20,
+      color: "#3730a3",
+      border: "1px solid #c7d2fe"
+    },
+    smallImage: {
+      height: 80,
+      width: 80,
+      objectFit: "cover",
+      borderRadius: 12,
+      cursor: "pointer",
+      border: "1px solid #d1d5db"
     }
   };
 
@@ -87,7 +249,7 @@ export default function AdminDashboard() {
 
       if (!res.ok) {
         if (res.status === 404 && data?.message === "User not found") {
-          window.localStorage.removeItem("user");
+          sessionStorage.removeItem("user");
           setError("User not found. Your login session is invalid after the reset. Please login again.");
           window.location.href = "/login";
           return;
@@ -113,6 +275,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadEvents();
+    loadEmailLogs();
   }, [loadEvents]);
 
   // ======================
@@ -210,6 +373,25 @@ export default function AdminDashboard() {
     }
   }
 
+  async function sendTestEmail(eventId) {
+    try {
+      const res = await fetch(`http://localhost:5000/api/send-test-email/${user.id}/${eventId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Test email ${data.status} to ${data.recipient}`);
+      } else {
+        alert(`Send failed: ${data.message || res.status}`);
+      }
+    } catch (err) {
+      console.error("Test email error:", err);
+      alert("Failed to send test email");
+    }
+  }
+
   // ======================
   // EDIT EVENTS
   // ======================
@@ -283,6 +465,7 @@ export default function AdminDashboard() {
       setSelectedEventId(eventId);
       setSelectedEventTitle(eventTitle || "");
       setStatusFilter("all");
+      await loadEventAnalytics(eventId);
     } catch (err) {
       console.error("Error loading participants:", err);
       setParticipants([]);
@@ -292,22 +475,48 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadEmailLogs() {
+  async function loadEventAnalytics(eventId) {
     try {
-      const res = await fetch(`http://localhost:5000/api/email-logs/${user.id}`);
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
+      const res = await fetch(`http://localhost:5000/api/events/${eventId}/analytics?user_id=${user.id}`);
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setEmailLogs(data);
+      if (res.ok) {
+        setEventMetrics(data);
       } else {
-        setEmailLogs([]);
+        setEventMetrics(null);
       }
     } catch (err) {
-      console.error("Error loading email logs:", err);
-      setEmailLogs([]);
-      alert("Error loading email logs");
+      console.error("Error loading analytics:", err);
+      setEventMetrics(null);
+    }
+  }
+
+  async function downloadParticipantsCsv() {
+    if (!selectedEventId) {
+      setActionMessage("Please select an event before exporting participants.");
+      setTimeout(() => setActionMessage(""), 5000);
+      return;
+    }
+    window.open(`http://localhost:5000/api/events/${selectedEventId}/export?user_id=${user.id}`, "_blank");
+  }
+
+  async function sendReminders() {
+    if (!selectedEventId) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/events/${selectedEventId}/send-reminders/${user.id}`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || "Failed to send reminders");
+        return;
+      }
+      const msg = `Reminder emails sent: ${data.sent}. Skipped: ${data.skipped}.`;
+      setActionMessage(msg);
+      setTimeout(() => setActionMessage(""), 6000);
+    } catch (err) {
+      console.error("Reminder error:", err);
+      alert("Failed to send reminder emails");
     }
   }
 
@@ -337,10 +546,37 @@ export default function AdminDashboard() {
         await loadParticipants(selectedEventId, selectedEventTitle);
       }
 
-      alert(formatEmailResult("Approved", data));
+      const msg = formatEmailResult("Approved", data);
+      setActionMessage(msg);
+      setTimeout(() => setActionMessage(""), 6000);
     } catch (err) {
       console.error("Approval error:", err);
       alert("Approval failed. Please check that the backend is running.");
+    }
+  }
+
+  async function confirmPayment(id) {
+    try {
+      const res = await fetch(`http://localhost:5000/api/confirm-payment/${id}/${user.id}`, {
+        method: "POST"
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Payment confirmation failed");
+        return;
+      }
+
+      if (selectedEventId) {
+        await loadParticipants(selectedEventId, selectedEventTitle);
+      }
+
+      const msg = formatEmailResult("Payment confirmed", data);
+      setActionMessage(msg);
+      setTimeout(() => setActionMessage(""), 6000);
+    } catch (err) {
+      console.error("Confirmation error:", err);
+      alert("Payment confirmation failed. Please check that the backend is running.");
     }
   }
 
@@ -360,82 +596,150 @@ export default function AdminDashboard() {
         await loadParticipants(selectedEventId, selectedEventTitle);
       }
 
-      alert(formatEmailResult("Rejected", data));
+      const msg = formatEmailResult("Rejected", data);
+      setActionMessage(msg);
+      setTimeout(() => setActionMessage(""), 6000);
     } catch (err) {
       console.error("Rejection error:", err);
       alert("Rejection failed. Please check that the backend is running.");
     }
   }
 
-  // ======================
-  // UI
-  // ======================
+  async function loadEmailLogs() {
+    try {
+      const res = await fetch(`http://localhost:5000/api/email-logs/${user.id}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || `API error: ${res.status}`);
+      }
+      if (Array.isArray(data)) {
+        setEmailLogs(data);
+      } else {
+        setEmailLogs([]);
+      }
+    } catch (err) {
+      console.error("Error loading email logs:", err);
+      setEmailLogs([]);
+      alert("Error loading email logs");
+    }
+  }
+
+  async function resendEmailLog(logId) {
+    try {
+      const res = await fetch(`http://localhost:5000/api/email-logs/${logId}/resend/${user.id}`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || "Failed to resend email");
+        return;
+      }
+      await loadEmailLogs();
+      const message = data.email_status === "sent"
+        ? "Email resent successfully."
+        : `Resend completed with status: ${data.email_status}`;
+      setActionMessage(message);
+      setTimeout(() => setActionMessage(""), 6000);
+    } catch (err) {
+      console.error("Error resending email:", err);
+      alert("Failed to resend email. Please check the backend.");
+    }
+  }
 
   return (
-    <div style={{ padding: "40px" }}>
-
-      <h1>Admin Dashboard</h1>
+      <div style={styles.page}>
+      <h1 style={styles.pageTitle}>Admin Dashboard</h1>
 
       {/* LOADING/ERROR DISPLAY */}
-      {loading && <p style={{ color: "blue" }}>Loading dashboard...</p>}
-      {error && <p style={{ color: "red" }}>Error: {error}</p>}
+      {loading && <p style={styles.info}>Loading dashboard...</p>}
+      {error && <p style={styles.error}>Error: {error}</p>}
+      {actionMessage && <div style={styles.actionMessage}>{actionMessage}</div>}
 
       {/* PROFILE */}
-      <div style={{ marginBottom: "20px" }}>
-        <h3>Profile</h3>
-        <p>Name: {user.name}</p>
-        <p>Email: {user.email}</p>
+      <div style={styles.profileCard}>
+        <h3 style={{ margin: 0 }}>Profile</h3>
+        <p style={styles.muted}>Name: {user.name}</p>
+        <p style={styles.muted}>Email: {user.email}</p>
       </div>
 
       {/* CREATE EVENT */}
-      <h2>Create Event</h2>
+      <h2 style={styles.sectionTitle}>Create Event</h2>
 
-      <input placeholder="Title" onChange={e => setForm({ ...form, title: e.target.value })} />
-      <input placeholder="Description" onChange={e => setForm({ ...form, description: e.target.value })} />
-      <input placeholder="Location" onChange={e => setForm({ ...form, location: e.target.value })} />
-      <div>
-        <label>Date:</label>
-        <DatePicker
-          selected={form.date}
-          onChange={date => setForm({ ...form, date })}
-          dateFormat="yyyy-MM-dd"
-          placeholderText="Select date"
-        />
-      </div>
-      <input placeholder="Price" onChange={e => setForm({ ...form, price: e.target.value })} />
-      <div style={{ marginTop: 8 }}>
-        <label>Payment Phone / Number</label>
-        <input placeholder="e.g. 09171234567" value={form.payment_phone} onChange={e => setForm({ ...form, payment_phone: e.target.value })} />
-      </div>
-      <div style={{ marginTop: 8 }}>
-        <label>Upload Payment QR</label>
-        <input type="file" accept="image/*" onChange={async (e) => {
-          const file = e.target.files[0];
-          const filename = await uploadFile(file);
-          if (filename) setForm({ ...form, payment_qr_filename: filename });
-        }} />
-        {form.payment_qr_filename && (
-          <div style={{ marginTop: 8 }}>
-            <img src={`http://localhost:5000/uploads/${form.payment_qr_filename}`} width="140" alt="qr" />
+      <div style={styles.card}>
+        <div style={styles.field}>
+          <label style={styles.label}>Title</label>
+          <input style={styles.input} placeholder="Event title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Description</label>
+          <input style={styles.input} placeholder="Short description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+        </div>
+
+        <div style={styles.row}>
+          <div style={{ flex: 1, marginRight: 12 }}>
+            <label style={styles.label}>Location</label>
+            <input style={styles.input} placeholder="Location" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} />
           </div>
-        )}
+          <div style={{ width: 220 }}>
+            <label style={styles.label}>Date</label>
+            <DatePicker
+              selected={form.date}
+              onChange={date => setForm({ ...form, date })}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Select date"
+              style={styles.input}
+            />
+          </div>
+        </div>
+
+        <div style={styles.row}>
+          <div style={{ flex: 1, marginRight: 12 }}>
+            <label style={styles.label}>Price (₱)</label>
+            <input style={styles.input} placeholder="0 for free" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={styles.label}>Payment Phone / Number</label>
+            <input style={styles.input} placeholder="e.g. 09171234567" value={form.payment_phone} onChange={e => setForm({ ...form, payment_phone: e.target.value })} />
+          </div>
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Upload Payment QR</label>
+          <input type="file" accept="image/*" onChange={async (e) => {
+            const file = e.target.files[0];
+            const filename = await uploadFile(file);
+            if (filename) setForm({ ...form, payment_qr_filename: filename });
+          }} />
+          {form.payment_qr_filename && (
+            <div style={{ marginTop: 8 }}>
+              <img src={`http://localhost:5000/uploads/${form.payment_qr_filename}`} width="140" alt="qr" />
+            </div>
+          )}
+        </div>
+
+        <div style={styles.row}> 
+          <div style={{ width: 220 }}>
+            <label style={styles.label}>Visibility</label>
+            <select style={styles.input} onChange={e => setForm({ ...form, visibility: e.target.value })} value={form.visibility}>
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+
+          <div style={{ marginLeft: 'auto', alignSelf: 'end' }}>
+            <button style={styles.primaryButton} onClick={createEvent}>Create Event</button>
+          </div>
+        </div>
       </div>
-
-      <select onChange={e => setForm({ ...form, visibility: e.target.value })}>
-        <option value="public">Public</option>
-        <option value="private">Private</option>
-      </select>
-
-      <br /><br />
-      <button onClick={createEvent}>Create Event</button>
 
       {/* EVENTS LIST */}
       <h2 style={{ marginTop: "30px" }}>My Events</h2>
 
-      {events.length === 0 && <p>No events yet.</p>}
+      {events.length === 0 && <p style={styles.muted}>No events yet.</p>}
 
       {events.map(e => (
-        <div key={e.id} style={{ border: "1px solid #ccc", padding: "10px", marginBottom: "10px" }}>
+        <div key={e.id} style={styles.eventCard}>
           {editingEventId === e.id ? (
             <div>
               <input value={editForm.title} onChange={ev => setEditForm({ ...editForm, title: ev.target.value })} placeholder="Title" />
@@ -474,13 +778,15 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div>
-              <h3>{e.title}</h3>
-              <p>{e.location}</p>
-              <p>{e.date}</p>
+              <h3 style={{ margin: 0 }}>{e.title}</h3>
+              <p style={styles.muted}>{e.location} • {e.date}</p>
 
-              <button onClick={() => loadParticipants(e.id, e.title)}>View Participants</button>
-              <button onClick={() => startEdit(e)} style={{ marginLeft: 8 }}>Edit</button>
-              <button onClick={() => deleteEvent(e.id)} style={{ marginLeft: "10px", backgroundColor: "red", color: "white" }}>Delete</button>
+              <div style={{ marginTop: 12 }}>
+                <button style={styles.secondaryButton} onClick={() => loadParticipants(e.id, e.title)}>View Participants</button>
+                <button style={{ ...styles.secondaryButton, marginLeft: 8 }} onClick={() => startEdit(e)}>Edit</button>
+                <button style={{ ...styles.primaryButton, marginLeft: 8 }} onClick={() => sendTestEmail(e.id)}>Send Test Email</button>
+                <button style={{ ...styles.dangerButton, marginLeft: 8 }} onClick={() => deleteEvent(e.id)}>Delete</button>
+              </div>
             </div>
           )}
         </div>
@@ -490,7 +796,31 @@ export default function AdminDashboard() {
       <h2 style={{ marginTop: "30px" }}>Participants</h2>
 
       {selectedEventTitle && (
-        <p style={{ fontStyle: "italic", color: "#555" }}>Showing participants for event: <strong>{selectedEventTitle}</strong></p>
+        <>
+          <p style={{ fontStyle: "italic", color: "#555" }}>Showing participants for event: <strong>{selectedEventTitle}</strong></p>
+          {eventMetrics && (
+            <div style={{
+              border: "1px solid #ddd",
+              borderRadius: 10,
+              padding: 16,
+              background: "#fafafa",
+              marginBottom: 18
+            }}>
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 12 }}>
+                <div><strong>Registrations:</strong> {eventMetrics.total_registrations}</div>
+                <div><strong>Approved:</strong> {eventMetrics.approved}</div>
+                <div><strong>Waiting:</strong> {eventMetrics.waiting}</div>
+                <div><strong>Rejected:</strong> {eventMetrics.rejected}</div>
+                <div><strong>Paid:</strong> {eventMetrics.paid}</div>
+                <div><strong>Revenue:</strong> PHP {eventMetrics.revenue}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={styles.secondaryButton} onClick={downloadParticipantsCsv}>Export Participants</button>
+                <button style={{ ...styles.primaryButton, marginLeft: 8 }} onClick={sendReminders}>Send Reminders</button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Participant search */}
@@ -527,80 +857,58 @@ export default function AdminDashboard() {
           return (p.full_name && p.full_name.toLowerCase().includes(q)) || (p.email && p.email.toLowerCase().includes(q));
         })
         .map(p => (
-        <div key={p.id} style={{ border: "1px solid #ddd", padding: "10px", marginBottom: "10px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div key={p.id} style={styles.participantCard}>
+          <div style={styles.participantHeader}>
             <div>
-              <p><strong>{p.full_name}</strong></p>
-              <p>{p.email}</p>
-              <p>Status: {p.approval_status}</p>
-              <p style={{ fontSize: "0.94rem", color: "#555" }}>Event: {p.event_title || selectedEventTitle || "Unknown"}</p>
+              <p style={{ margin: 0, fontWeight: 700 }}>{p.full_name}</p>
+              <p style={styles.muted}>{p.email}</p>
+              <p style={styles.mutedSmall}>Status: {p.approval_status} • Event: {p.event_title || selectedEventTitle || "Unknown"}</p>
             </div>
-            <button
-              onClick={() => toggleParticipantDetails(p.id)}
-              style={{ backgroundColor: "#007bff", color: "white", border: "none", padding: "8px 12px", cursor: "pointer" }}
-            >
-              {expandedParticipants.includes(p.id) ? "Hide details" : "Show details"}
-            </button>
+            <div>
+              <button style={styles.ghostButton} onClick={() => toggleParticipantDetails(p.id)}>
+                {expandedParticipants.includes(p.id) ? "Hide" : "Details"}
+              </button>
+            </div>
           </div>
 
           {expandedParticipants.includes(p.id) && (
-            <div style={{ marginTop: "10px", backgroundColor: "#f9f9f9", padding: "12px", borderRadius: "6px" }}>
+            <div style={styles.participantDetails}>
               <p><strong>Payment Method:</strong> {p.payment_method || "N/A"}</p>
               <p><strong>Reference Number:</strong> {p.reference_number || "N/A"}</p>
               <p><strong>Payment Date:</strong> {p.payment_date || "N/A"}</p>
               <p><strong>Receipt Number:</strong> {p.receipt_number || "N/A"}</p>
               <p><strong>Ticket Code:</strong> {p.ticket_code || "N/A"}</p>
 
-              {p.ticket_qr_data && (
-                <div style={{ marginTop: "10px" }}>
-                  <strong>Ticket QR:</strong>
-                  <br />
-                  <img
-                    src={`data:image/png;base64,${p.ticket_qr_data}`}
-                    alt="Ticket QR"
-                    style={{
-                      display: "block",
-                      marginTop: "8px",
-                      width: "140px",
-                      maxWidth: "100%",
-                      cursor: "pointer",
-                      border: "1px solid #ccc",
-                      borderRadius: "10px"
-                    }}
-                    onClick={() => setProofPreview(`data:image/png;base64,${p.ticket_qr_data}`)}
-                  />
-                  <p style={{ fontSize: "0.9rem", color: "#475569", marginTop: "6px" }}>
-                    Click the ticket QR to enlarge.
-                  </p>
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
+                {p.ticket_qr_data && (
+                  <div>
+                    <strong>Ticket QR</strong>
+                    <br />
+                    <img
+                      src={`data:image/png;base64,${p.ticket_qr_data}`}
+                      alt="Ticket QR"
+                      style={styles.smallImage}
+                      onClick={() => setProofPreview(`data:image/png;base64,${p.ticket_qr_data}`)}
+                    />
+                  </div>
+                )}
 
-              {p.screenshot_filename && (
-                <div style={{ marginTop: "10px" }}>
-                  <strong>Payment Proof:</strong>
-                  <br />
-                  <img
-                    src={`http://localhost:5000/uploads/${p.screenshot_filename}`}
-                    alt="proof"
-                    style={{
-                      marginTop: "8px",
-                      border: "1px solid #ccc",
-                      width: "180px",
-                      maxWidth: "100%",
-                      cursor: "pointer",
-                      borderRadius: "10px"
-                    }}
-                    onClick={() => setProofPreview(`http://localhost:5000/uploads/${p.screenshot_filename}`)}
-                  />
-                  <p style={{ fontSize: "0.9rem", color: "#475569", marginTop: "6px" }}>
-                    Click the image to enlarge.
-                  </p>
-                </div>
-              )}
+                {p.screenshot_filename && (
+                  <div>
+                    <strong>Payment Proof</strong>
+                    <br />
+                    <img
+                      src={`http://localhost:5000/uploads/${p.screenshot_filename}`}
+                      alt="proof"
+                      style={styles.smallImage}
+                      onClick={() => setProofPreview(`http://localhost:5000/uploads/${p.screenshot_filename}`)}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          <br />
           {proofPreview && (
             <div style={qrStyles.overlay} onClick={() => setProofPreview(null)}>
               <div style={qrStyles.modal} onClick={e => e.stopPropagation()}>
@@ -616,8 +924,13 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          <button onClick={() => approve(p.id)}>Approve</button>
-          <button onClick={() => reject(p.id)} style={{ marginLeft: "8px" }}>Reject</button>
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {p.payment_status === "pending" && p.payment_method !== "Cash" && (
+              <button style={styles.primaryButton} onClick={() => confirmPayment(p.id)}>Confirm Payment</button>
+            )}
+            <button style={styles.primaryButton} onClick={() => approve(p.id)}>Approve</button>
+            <button style={{ ...styles.secondaryButton, marginLeft: 8 }} onClick={() => reject(p.id)}>Reject</button>
+          </div>
         </div>
       ))}
 
@@ -637,6 +950,14 @@ export default function AdminDashboard() {
               <p>Event: {log.event_title || "General"}</p>
               <p>Status: {log.status}</p>
               <p>Sent at: {log.created_at}</p>
+              {log.status !== "sent" && (
+                <button
+                  style={{ ...styles.secondaryButton, marginTop: 8 }}
+                  onClick={() => resendEmailLog(log.id)}
+                >
+                  Resend Email
+                </button>
+              )}
             </div>
           ))
         )}

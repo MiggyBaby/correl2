@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
+import { loadStripe } from "@stripe/stripe-js";
 
 export default function Register() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
 
   const [event, setEvent] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
+  const [stripeConfig, setStripeConfig] = useState(null);
 
-  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const user = JSON.parse(sessionStorage.getItem("user") || "null");
 
   const [fullName, setFullName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
@@ -24,9 +27,16 @@ export default function Register() {
   useEffect(() => {
     async function loadPageData() {
       try {
-        const eventRes = await fetch(`http://localhost:5000/api/events/${id}`);
+        const [eventRes, configRes] = await Promise.all([
+          fetch(`http://localhost:5000/api/events/${id}`),
+          fetch("http://localhost:5000/api/stripe-config")
+        ]);
+
         const eventData = await eventRes.json();
+        const stripeData = await configRes.json();
+
         setEvent(eventData);
+        setStripeConfig(stripeData);
 
         // Prefer event-specific payment info
         if (eventData.payment_phone || eventData.payment_qr_filename) {
@@ -39,13 +49,18 @@ export default function Register() {
           const paymentData = await paymentRes.json();
           setPaymentInfo(paymentData);
         }
+
+        if (searchParams.get("canceled") === "true") {
+          setMessage("Stripe checkout was canceled. You can try again or choose a different payment method.");
+          setSuccess(false);
+        }
       } catch {
         setMessage("Failed to load event or payment information.");
       }
     }
 
     loadPageData();
-  }, [id]);
+  }, [id, searchParams]);
 
   function handleProceedToPayment(e) {
     e.preventDefault();
@@ -60,8 +75,62 @@ export default function Register() {
     setShowPaymentStep(true);
   }
 
+  async function handleStripePayment() {
+    if (!stripeConfig?.enabled) {
+      setMessage("Stripe is not available at the moment.");
+      setSuccess(false);
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+    setSuccess(false);
+
+    try {
+      const res = await fetch("http://localhost:5000/api/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName,
+          email,
+          event_id: id
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.message || "Could not start Stripe checkout.");
+        setSuccess(false);
+        return;
+      }
+
+      const stripe = await loadStripe(stripeConfig.publishableKey);
+      if (!stripe) {
+        setMessage("Stripe library failed to load.");
+        setSuccess(false);
+        return;
+      }
+
+      const { error } = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+      if (error) {
+        setMessage(error.message || "Could not redirect to Stripe checkout.");
+        setSuccess(false);
+      }
+    } catch {
+      setMessage("Could not connect to server.");
+      setSuccess(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSubmitPayment(e) {
     e.preventDefault();
+    if (paymentMethod === "Stripe") {
+      await handleStripePayment();
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     setSuccess(false);
@@ -185,20 +254,26 @@ export default function Register() {
       ) : (
         <form onSubmit={handleSubmitPayment} style={styles.card}>
           <h2>Payment Method</h2>
-          <p><strong>Send payment to:</strong> {paymentInfo.payment_number || paymentInfo.number}</p>
+
+          {paymentMethod !== "Stripe" && (
+            <>
+              <p><strong>Send payment to:</strong> {paymentInfo.payment_number || paymentInfo.number}</p>
 
               <div style={styles.qrWrapper}>
-            <img
-              src={paymentInfo.payment_qr_filename ? `http://localhost:5000/uploads/${paymentInfo.payment_qr_filename}` : `data:image/png;base64,${paymentInfo.payment_qr_data}`}
-              alt="Payment QR"
-              style={styles.qrImage}
-              onClick={() => setQrExpanded(true)}
-            />
-            <p style={styles.helpText}>
-              Tap the QR image to enlarge for easier scanning.
-            </p>
-          </div>
-          {qrExpanded && (
+                <img
+                  src={paymentInfo.payment_qr_filename ? `http://localhost:5000/uploads/${paymentInfo.payment_qr_filename}` : `data:image/png;base64,${paymentInfo.payment_qr_data}`}
+                  alt="Payment QR"
+                  style={styles.qrImage}
+                  onClick={() => setQrExpanded(true)}
+                />
+                <p style={styles.helpText}>
+                  Tap the QR image to enlarge for easier scanning.
+                </p>
+              </div>
+            </>
+          )}
+
+          {qrExpanded && paymentMethod !== "Stripe" && (
             <div style={styles.qrOverlay} onClick={() => setQrExpanded(false)}>
               <div style={styles.qrModal} onClick={(e) => e.stopPropagation()}>
                 <img
@@ -223,11 +298,21 @@ export default function Register() {
               <option value="GCash">GCash</option>
               <option value="PayMaya">PayMaya</option>
               <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Stripe">Stripe</option>
               <option value="Cash">Cash</option>
             </select>
           </div>
 
-          {paymentMethod !== "Cash" && (
+          {paymentMethod === "Stripe" && (
+            <div style={{ marginBottom: 18, color: "#334155" }}>
+              <p style={{ margin: 0, fontWeight: 600 }}>Secure online payment</p>
+              <p style={styles.helpText}>
+                You will be redirected to Stripe to complete the payment for this event.
+              </p>
+            </div>
+          )}
+
+          {paymentMethod !== "Cash" && paymentMethod !== "Stripe" && (
             <>
               <div style={styles.field}>
                 <label style={styles.label}>Reference Code</label>
@@ -264,10 +349,10 @@ export default function Register() {
             disabled={loading}
             style={{
               ...styles.button,
-              background: loading ? "#94a3b8" : "#059669"
+              background: loading ? "#94a3b8" : paymentMethod === "Stripe" ? "#4f46e5" : "#059669"
             }}
           >
-            {loading ? "Submitting..." : "Submit Payment"}
+            {loading ? "Processing..." : paymentMethod === "Stripe" ? "Proceed to Stripe" : "Submit Payment"}
           </button>
 
           {message && (
@@ -367,7 +452,7 @@ const styles = {
     fontWeight: 700
   },
   link: {
-    color: "#2563eb",
+    color: "#dc2626",
     textDecoration: "none",
     fontWeight: 600
   },
@@ -405,7 +490,7 @@ const styles = {
     padding: "10px 18px",
     border: "none",
     borderRadius: "8px",
-    background: "#2563eb",
+    background: "#dc2626",
     color: "white",
     cursor: "pointer"
   }

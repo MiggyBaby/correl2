@@ -4,3 +4,4 @@ SQLAlchemy==2.0.32
 qrcode[pil]==7.4.2
 Werkzeug==3.0.0
 python-dotenv==1.0.0
+stripe==10.12.0
